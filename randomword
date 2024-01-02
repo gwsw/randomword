@@ -2,43 +2,95 @@
 use strict;
 use Getopt::Std;
 
-my $usage = "usage: randomword [-m min-length] [-n num-words] [-N num-lines] [-p paragraph-width] [-w word-file]";
+my $usage = <<_EOF_;
+usage: randomword [options]
+       -m <number>  Minimum word length
+       -M <number>  Maximum word length
+       -n <number>  Number of words
+       -N <number>  Number of lines (if set, -n ignored)
+       -p <number>  Format as paragraph with given width 
+       -P           Add punctuation
+       -w <file>    Set dictionary file
+_EOF_
 
-main();
+# Based on extensive linguistic research {d}
+my $sent_min = 4;
+my $sent_max = 20;
+
+exit (main() ? 0 : 1);
 
 sub main {
     my %opt;
-    die "$usage\n" if (not getopts('m:n:N:p:w:', \%opt)) or @ARGV > 0;
-    my $min_len    = $opt{m} ? $opt{m} : 0;
-    my $num_words  = $opt{N} ? 99999999 : $opt{n} ? $opt{n} : 1;
-    my $num_lines  = $opt{N} ? $opt{N} : 0;
+    if (not getopts('m:M:n:N:p:Pw:', \%opt) or @ARGV > 0) {
+        print $usage;
+        return 0;
+    }
+    my $len_min    = $opt{m} ? $opt{m} : 0;
+    my $len_max    = $opt{M} ? $opt{M} : 999;
+    my $wpc_min    = $opt{c} ? $opt{c} : 4;
+    my $wpc_max    = $opt{C} ? $opt{C} : 25;
+    my $wpc_pct    = $opt{D} ? $opt{D} : 20;
+    my $num_words  = $opt{N} ? -1 : $opt{n} ? $opt{n} : 1;
+    my $num_lines  = $opt{N} ? $opt{N} : -1;
     my $para_width = $opt{p} ? $opt{p} : 0;
+    my $punc       = $opt{P};
     my $word_file  = $opt{w} ? $opt{w} : '/usr/share/dict/words';
 
-    my $words = all_words($word_file, $min_len);
+    my $words = all_words($word_file, $len_min, $len_max);
     my $line = '';
-    for (my $i = 0; $i < $num_words; ++$i) {
+    my $sent = 0; # words in current sentence (unrelated to lines)
+    my $wsc = 0; # words since last comma
+    my $cap = $punc; # capitalize next word
+    my $printed_lines = 0;
+    for (my $gen_words = 0; $gen_words < $num_words or $num_words == -1; ++$gen_words) {
         my $word = $$words[int rand @$words];
+        if ($cap) {
+            $word = ucfirst $word;
+            $cap = 0;
+        }
         my $sep = (length($line) > 0) ? ' ' : '';
         if (length($line) + length($sep) + length($word) > $para_width) {
-            print $line, "\n";
-            $line = '';
-            last if $num_lines-- <= 0;
+            if ($line) {
+                print $line, "\n";
+                ++$printed_lines;
+                if ($num_lines != -1 and $printed_lines >= $num_lines) {
+                    $line = '';
+                    last;
+                }
+            }
+            $line = $word;
+        } else {
+            $line .= $sep if $line;
+            $line .= $word;
         }
-        $line .= $sep if $line;
-        $line .= $word;
+        if ($punc) {
+            if (++$wsc >= $wpc_max or ($wsc >= $wpc_min and rand(100) < $wpc_pct)) {
+                $line .= ',';
+                $wsc = 0;
+            } elsif (++$sent >= $sent_max or ($sent >= $sent_min and rand(100) < 10)) {
+                my $pct = rand(100);
+                $line .= ($pct < 4) ? '?' : ($pct < 5) ? '!' : '.';
+                $sent = 0;
+                $cap = 1;
+            }
+        }
     }
-    print $line, "\n";
+    if ($line) {
+        print $line;
+        print "." if $punc;
+        print "\n";
+    }
+    return 1;
 }
 
 sub all_words {
-    my ($word_file, $min_len) = @_;
+    my ($word_file, $len_min, $len_max) = @_;
     my $wf;
     open $wf, $word_file or die "cannot open $word_file\n";
     my @words;
     while (<$wf>) {
         chomp;
-        push @words, $_ if length($_) >= $min_len;
+        push @words, $_ if length($_) >= $len_min and length($_) <= $len_max;
     }
     close $wf;
     return \@words;
