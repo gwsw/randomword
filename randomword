@@ -187,7 +187,10 @@ sub all_words {
     while (<$wf>) {
         chomp;
         my $len = length $_;
-        next if /^[A-Z]/ and not $keep_upper;
+        next if /^-/ or /[.-]$/;
+        if (not $keep_upper) {
+            next if /^[A-Z]/ or not /[aeiouy]/;
+        }
         if ($len >= $wordlen_min and $len <= $wordlen_max) {
             push @words, $_;
             if (not $lwords{$len}) { $lwords{$len} = []; }
