@@ -9,50 +9,56 @@ usage: randomword [options]
        -C <number>  Maximum words between commas
        -D <number>  %chance of comma after word
        -d <file>    Dictionary file
+       -e           English word length frequency
        -l <number>  Number of lines (if set, -n is ignored)
        -m <number>  Minimum word length
        -M <number>  Maximum word length
        -n <number>  Number of words
        -p           Add punctuation
+       -P <number>  Same as "-l<number> -w\$COLUMNS -ep"
+       -s <number>  Minimum words in sentence
+       -S <number>  Maximum words in sentence
        -q <number>  %chance of terminating sentence with ?
-       -s <number>  %chance of ending sentence after each word
        -w <number>  Format as paragraph with given width 
+       -. <number>  %chance of ending sentence after each word
 _EOF_
 
 # Based on extensive linguistic research {d}
-my $sent_min = 4;
-my $sent_max = 20;
 
 exit (main() ? 0 : 1);
 
 sub main {
     my %opt;
-    if (not getopts('b:c:C:d:D:l:m:M:n:pq:s:w:?!', \%opt) or @ARGV > 0) {
+    if (not getopts('b:c:C:d:D:el:m:M:n:pP:q:s:uw:.:', \%opt) or @ARGV > 0) {
         print $usage;
         return 0;
     }
-    my $wpc_min       = $opt{c} ? $opt{c} : 4;
-    my $wpc_max       = $opt{C} ? $opt{C} : 25;
-    my $wpc_pct       = $opt{D} ? $opt{D} : 20;
-    my $word_file     = $opt{d} ? $opt{d} : '/usr/share/dict/words';
-    my $num_lines     = $opt{l} ? $opt{l} : -1;
-    my $wordlen_min   = $opt{m} ? $opt{m} : 0;
-    my $wordlen_max   = $opt{M} ? $opt{M} : 999;
-    my $num_words     = $opt{l} ? -1 : $opt{n} ? $opt{n} : 1;
-    my $endsent_pct   = $opt{'s'} ? $opt{'s'} : 10;
-    my $para_width    = $opt{w} ? $opt{w} : 0;
-    my $punc          = $opt{P};
-    my $quest_pct     = $opt{'q'} ? $opt{'q'} : 5;
-    my $exclam_pct    = $opt{'b'} ? $opt{'b'} : 2;
+    my $exclam_pct    = ($opt{b} or 2);
+    my $wpc_min       = ($opt{c} or 4);
+    my $wpc_max       = ($opt{C} or 25);
+    my $wpc_pct       = ($opt{D} or 20);
+    my $word_file     = ($opt{d} or '/usr/share/dict/words');
+    my $english       = ($opt{P} or $opt{e});
+    my $num_lines     = ($opt{P} or $opt{l} or -1);
+    my $wordlen_min   = ($opt{m} or 2);
+    my $wordlen_max   = ($opt{M} or 999);
+    my $num_words     = (($num_lines > 0) ? -1 : ($opt{n} or 1));
+    my $punc          = ($opt{P} or $opt{p});
+    my $quest_pct     = ($opt{q} or 5);
+    my $endsent_pct   = ($opt{'.'} or 15);
+    my $sent_min      = ($opt{s} or 4);
+    my $sent_max      = ($opt{S} or 20);
+    my $keep_upper    = $opt{u};
+    my $para_width    = ($opt{w} or ($opt{P} ? $ENV{COLUMNS}-1 : 0));
 
-    my $words = all_words($word_file, $wordlen_min, $wordlen_max);
+    my $words = all_words($word_file, $wordlen_min, $wordlen_max, $keep_upper);
     my $line = '';
     my $sent = 0; # words in current sentence (unrelated to lines)
     my $wsc = 0; # words since last comma
     my $cap = $punc; # capitalize next word
     my $printed_lines = 0;
     for (my $gen_words = 0; $gen_words < $num_words or $num_words == -1; ++$gen_words) {
-        my $word = $$words[int rand @$words];
+        my $word = random_word($words, $english);
         if ($cap) {
             $word = ucfirst $word;
             $cap = 0;
@@ -60,9 +66,11 @@ sub main {
         my $sep = (length($line) > 0) ? ' ' : '';
         if (length($line) + length($sep) + length($word) > $para_width) {
             if ($line) {
-                print $line, "\n";
                 ++$printed_lines;
-                if ($num_lines != -1 and $printed_lines >= $num_lines) {
+                my $done = ($num_lines != -1 and $printed_lines >= $num_lines);
+                $line .= '.' if $done and substr($line,-1) =~ /[\w]/;
+                print $line, "\n";
+                if ($done) {
                     $line = '';
                     last;
                 }
@@ -91,16 +99,56 @@ sub main {
     }
     return 1;
 }
-
+sub random_word {
+    my ($words, $english) = @_;
+    my $word;
+    if ($english) {
+        my $len = english_len();
+        my $tbl = ${$words->{lwords}}{$len};
+        $word = $$tbl[int rand @$tbl];
+        return $word if $word;
+    }
+    my $tbl = $words->{words};
+    $word = $$tbl[int rand @$tbl];
+    return $word;
+}
+sub english_len {
+    my %freq = (
+        1 => 3,
+        2 => 17,
+        3 => 25,
+        4 => 17,
+        5 => 10,
+        6 => 10,
+        7 => 8,
+        8 => 5,
+        9 => 3,
+        10 => 2,
+    );
+    my $pct = rand(100);
+    foreach my $len (keys %freq) {
+        my $f = $freq{$len};
+        return $len if $pct < $f;
+        $pct -= $f;
+    }
+    return 3;
+}
 sub all_words {
-    my ($word_file, $wordlen_min, $wordlen_max) = @_;
+    my ($word_file, $wordlen_min, $wordlen_max, $keep_upper) = @_;
     my $wf;
     open $wf, $word_file or die "cannot open $word_file\n";
     my @words;
+    my %lwords;
     while (<$wf>) {
         chomp;
-        push @words, $_ if length($_) >= $wordlen_min and length($_) <= $wordlen_max;
+        my $len = length $_;
+        next if /^[A-Z]/ and not $keep_upper;
+        if ($len >= $wordlen_min and $len <= $wordlen_max) {
+            push @words, $_;
+            if (not $lwords{$len}) { $lwords{$len} = []; }
+            push @{$lwords{$len}}, $_;
+        }
     }
     close $wf;
-    return \@words;
+    return { "words" => \@words, "lwords" => \%lwords };
 }
