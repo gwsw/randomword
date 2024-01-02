@@ -4,13 +4,19 @@ use Getopt::Std;
 
 my $usage = <<_EOF_;
 usage: randomword [options]
+       -b <number>  %chance of terminating sentence with !
+       -c <number>  Minimum words between commas
+       -C <number>  Maximum words between commas
+       -D <number>  %chance of comma after word
+       -d <file>    Dictionary file
+       -l <number>  Number of lines (if set, -n is ignored)
        -m <number>  Minimum word length
        -M <number>  Maximum word length
        -n <number>  Number of words
-       -N <number>  Number of lines (if set, -n ignored)
-       -p <number>  Format as paragraph with given width 
-       -P           Add punctuation
-       -w <file>    Set dictionary file
+       -p           Add punctuation
+       -q <number>  %chance of terminating sentence with ?
+       -s <number>  %chance of ending sentence after each word
+       -w <number>  Format as paragraph with given width 
 _EOF_
 
 # Based on extensive linguistic research {d}
@@ -21,22 +27,25 @@ exit (main() ? 0 : 1);
 
 sub main {
     my %opt;
-    if (not getopts('m:M:n:N:p:Pw:', \%opt) or @ARGV > 0) {
+    if (not getopts('b:c:C:d:D:l:m:M:n:pq:s:w:?!', \%opt) or @ARGV > 0) {
         print $usage;
         return 0;
     }
-    my $len_min    = $opt{m} ? $opt{m} : 0;
-    my $len_max    = $opt{M} ? $opt{M} : 999;
-    my $wpc_min    = $opt{c} ? $opt{c} : 4;
-    my $wpc_max    = $opt{C} ? $opt{C} : 25;
-    my $wpc_pct    = $opt{D} ? $opt{D} : 20;
-    my $num_words  = $opt{N} ? -1 : $opt{n} ? $opt{n} : 1;
-    my $num_lines  = $opt{N} ? $opt{N} : -1;
-    my $para_width = $opt{p} ? $opt{p} : 0;
-    my $punc       = $opt{P};
-    my $word_file  = $opt{w} ? $opt{w} : '/usr/share/dict/words';
+    my $wpc_min       = $opt{c} ? $opt{c} : 4;
+    my $wpc_max       = $opt{C} ? $opt{C} : 25;
+    my $wpc_pct       = $opt{D} ? $opt{D} : 20;
+    my $word_file     = $opt{d} ? $opt{d} : '/usr/share/dict/words';
+    my $num_lines     = $opt{l} ? $opt{l} : -1;
+    my $wordlen_min   = $opt{m} ? $opt{m} : 0;
+    my $wordlen_max   = $opt{M} ? $opt{M} : 999;
+    my $num_words     = $opt{l} ? -1 : $opt{n} ? $opt{n} : 1;
+    my $endsent_pct   = $opt{'s'} ? $opt{'s'} : 10;
+    my $para_width    = $opt{w} ? $opt{w} : 0;
+    my $punc          = $opt{P};
+    my $quest_pct     = $opt{'q'} ? $opt{'q'} : 5;
+    my $exclam_pct    = $opt{'b'} ? $opt{'b'} : 2;
 
-    my $words = all_words($word_file, $len_min, $len_max);
+    my $words = all_words($word_file, $wordlen_min, $wordlen_max);
     my $line = '';
     my $sent = 0; # words in current sentence (unrelated to lines)
     my $wsc = 0; # words since last comma
@@ -67,9 +76,9 @@ sub main {
             if (++$wsc >= $wpc_max or ($wsc >= $wpc_min and rand(100) < $wpc_pct)) {
                 $line .= ',';
                 $wsc = 0;
-            } elsif (++$sent >= $sent_max or ($sent >= $sent_min and rand(100) < 10)) {
+            } elsif (++$sent >= $sent_max or ($sent >= $sent_min and rand(100) < $endsent_pct)) {
                 my $pct = rand(100);
-                $line .= ($pct < 4) ? '?' : ($pct < 5) ? '!' : '.';
+                $line .= ($pct < $quest_pct) ? '?' : ($pct < $quest_pct+$exclam_pct) ? '!' : '.';
                 $sent = 0;
                 $cap = 1;
             }
@@ -84,13 +93,13 @@ sub main {
 }
 
 sub all_words {
-    my ($word_file, $len_min, $len_max) = @_;
+    my ($word_file, $wordlen_min, $wordlen_max) = @_;
     my $wf;
     open $wf, $word_file or die "cannot open $word_file\n";
     my @words;
     while (<$wf>) {
         chomp;
-        push @words, $_ if length($_) >= $len_min and length($_) <= $len_max;
+        push @words, $_ if length($_) >= $wordlen_min and length($_) <= $wordlen_max;
     }
     close $wf;
     return \@words;
