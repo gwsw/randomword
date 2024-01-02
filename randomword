@@ -10,6 +10,7 @@ usage: randomword [options]
        -D <number>  %chance of comma after word
        -d <file>    Dictionary file
        -e           English word length frequency
+       -g <number>  %chance of terminating sentence with ;
        -l <number>  Number of lines (if set, -n is ignored)
        -m <number>  Minimum word length
        -M <number>  Maximum word length
@@ -28,7 +29,7 @@ exit (main() ? 0 : 1);
 
 sub main {
     my %opt;
-    if (not getopts('b:c:C:d:D:el:m:M:n:pP:q:s:uw:.:', \%opt) or @ARGV > 0) {
+    if (not getopts('b:c:C:d:D:eg:l:m:M:n:pP:q:s:uw:.:', \%opt) or @ARGV > 0) {
         print $usage;
         return 0;
     }
@@ -38,6 +39,7 @@ sub main {
     my $wpc_pct       = ($opt{D} or 20);
     my $word_file     = ($opt{d} or '/usr/share/dict/words');
     my $english       = ($opt{P} or $opt{e});
+    my $semi_pct      = ($opt{g} or 2);
     my $num_lines     = ($opt{P} or $opt{l} or -1);
     my $wordlen_min   = ($opt{m} or 2);
     my $wordlen_max   = ($opt{M} or 999);
@@ -101,9 +103,10 @@ sub main {
             } elsif (++$sent >= $sent_max or ($sent >= $sent_min and rand(100) < $endsent_pct)) {
                 # End the current sentence here; add terminal punctuation.
                 my $pct = rand(100);
-                $line .= ($pct < $quest_pct) ? '?' : ($pct < $quest_pct+$exclam_pct) ? '!' : '.';
+                my $term = ($pct < $quest_pct) ? '?' : ($pct < $quest_pct+$exclam_pct) ? '!' : ($pct < $quest_pct+$exclam_pct+$semi_pct) ? ';' : '.';
+                $line .= $term;
                 $sent = 0;
-                $cap = 1; # capitalize first word of next sentence
+                $cap = 1 unless $term eq ';'; # capitalize first word of next sentence
             }
         }
     }
