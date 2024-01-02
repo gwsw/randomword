@@ -1,0 +1,45 @@
+#!/usr/bin/perl
+use strict;
+use Getopt::Std;
+
+my $usage = "usage: randomword [-m min-length] [-n num-words] [-N num-lines] [-p paragraph-width] [-w word-file]";
+
+main();
+
+sub main {
+    my %opt;
+    die "$usage\n" if (not getopts('m:n:N:p:w:', \%opt)) or @ARGV > 0;
+    my $min_len    = $opt{m} ? $opt{m} : 0;
+    my $num_words  = $opt{N} ? 99999999 : $opt{n} ? $opt{n} : 1;
+    my $num_lines  = $opt{N} ? $opt{N} : 0;
+    my $para_width = $opt{p} ? $opt{p} : 0;
+    my $word_file  = $opt{w} ? $opt{w} : '/usr/share/dict/words';
+
+    my $words = all_words($word_file, $min_len);
+    my $line = '';
+    for (my $i = 0; $i < $num_words; ++$i) {
+        my $word = $$words[int rand @$words];
+        my $sep = (length($line) > 0) ? ' ' : '';
+        if (length($line) + length($sep) + length($word) > $para_width) {
+            print $line, "\n";
+            $line = '';
+            last if $num_lines-- <= 0;
+        }
+        $line .= $sep if $line;
+        $line .= $word;
+    }
+    print $line, "\n";
+}
+
+sub all_words {
+    my ($word_file, $min_len) = @_;
+    my $wf;
+    open $wf, $word_file or die "cannot open $word_file\n";
+    my @words;
+    while (<$wf>) {
+        chomp;
+        push @words, $_ if length($_) >= $min_len;
+    }
+    close $wf;
+    return \@words;
+}
